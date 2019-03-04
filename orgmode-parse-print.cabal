@@ -24,7 +24,7 @@ library
       src
   build-depends:
       attoparsec
-    , base >=4.10 && <4.11
+    , base
     , old-locale
     , orgmode-parse
     , pretty-simple

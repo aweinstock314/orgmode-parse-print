@@ -1,11 +1,13 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Data.OrgMode.Print where
 
-import Data.Text as T (Text, pack, lines, unlines)
+import Data.List (foldl')
+import Data.Maybe (fromJust)
+import Data.Text as T (Text, pack, unlines)
 import Data.OrgMode.Types
 import Data.Monoid
-import Data.HashMap.Strict
 import Data.Thyme.Format
+import GHC.Natural (naturalToWordMaybe)
 import System.Locale
 
 formatDoc :: Document -> [Text]
@@ -23,10 +25,38 @@ renderHeadline h = do
 
 renderSection :: Text -> Section -> [Text]
 renderSection indent s = do
-  T.lines (sectionParagraph s) ++ [renderSectionPlanning (indent) $ sectionPlannings s]
+  map (T.unlines . renderContent indent) (sectionContents s) ++ [renderSectionPlanning indent $ sectionPlannings s]
 
-renderSectionPlanning :: Text -> Plannings -> Text
-renderSectionPlanning indent (Plns hm) = case foldlWithKey' (\a k v -> [indent, " [", textShow k, " ", renderTimestamp v, "]"] ++  a) [] hm  of
+renderContent :: Text -> Content -> [Text]
+renderContent indent (OrderedList items) = map (\(Item i) -> "- " <> T.unlines (map (T.unlines . renderContent indent) i)) items
+renderContent indent (UnorderedList items) = zipWith (\n (Item i) -> T.pack (show n) <> T.pack ". " <> T.unlines (map (T.unlines . renderContent indent) i)) [1..] items
+renderContent indent (Paragraph paras) = map ((indent <>) . renderMarkupText) paras
+renderContent indent (Drawer nm cts) = [indent <> ":" <> nm <> ":", cts, indent <> ":" <> nm <> ":"]
+renderContent indent (Block type_ data_ cts) = [indent <> "#+begin_" <> renderBlockType type_ <> maybe "" (<>" ") data_] <> cts <> [indent <> "#+end_" <> renderBlockType type_]
+
+renderBlockType :: BlockType -> Text
+renderBlockType Comment = "comment"
+renderBlockType Example = "example"
+renderBlockType Export = "export"
+renderBlockType Src = "src"
+
+surround :: Text -> Text -> Text
+surround c s = c <> s <> c
+
+renderMarkupText :: MarkupText -> Text
+renderMarkupText (Plain x) = x
+renderMarkupText (LaTeX x) = surround "$" x -- TODO: backslashify newlines
+renderMarkupText (Verbatim x) = surround "=" x
+renderMarkupText (Code x) = surround "~" x
+renderMarkupText (Bold xs) = surround "*" (mconcat (map renderMarkupText xs))
+renderMarkupText (UnderLine xs) = surround "_" (mconcat (map renderMarkupText xs))
+renderMarkupText (Italic xs) = surround "/" (mconcat (map renderMarkupText xs))
+renderMarkupText (Strikethrough xs) = surround "+" (mconcat (map renderMarkupText xs))
+renderMarkupText (HyperLink lnk (Just desc)) = "[[" <> lnk <> "][" <> desc <> "]]"
+renderMarkupText (HyperLink lnk Nothing) = "[[" <> lnk <> "]]"
+
+renderSectionPlanning :: Text -> [Planning] -> Text
+renderSectionPlanning indent hm = case foldl' (\a (Planning k v) -> [indent, " [", textShow k, " ", renderTimestamp v, "]"] ++  a) [] hm  of
   [] -> ""
   xs -> mconcat $ "\n" : xs
 
@@ -37,4 +67,4 @@ textShow :: Show a => a -> Text
 textShow = pack . show
 
 getDepth :: Depth -> Int
-getDepth (Depth x) = x
+getDepth (Depth x) = fromIntegral (fromJust (naturalToWordMaybe x))
