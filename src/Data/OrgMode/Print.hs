@@ -16,8 +16,10 @@ formatDoc doc = ((formatHeadline) <$> documentHeadlines doc)
 formatHeadline :: Headline -> Text
 formatHeadline hs = 
      renderHeadline hs
-  <> T.unlines (renderSection (pack $ take (getDepth $ depth hs) $ Prelude.repeat ' ') (section hs))
+  <> ifNonNilNewline (T.unlines (renderSection (pack $ take (getDepth $ depth hs) $ Prelude.repeat ' ') (section hs)))
   <> mconcat (formatHeadline <$> subHeadlines hs)
+
+ifNonNilNewline t = case t of { "" -> ""; _ -> "\n" <> t }
 
 renderHeadline :: Headline -> Text
 renderHeadline h = do
@@ -25,14 +27,14 @@ renderHeadline h = do
 
 renderSection :: Text -> Section -> [Text]
 renderSection indent s = do
-  map (T.unlines . renderContent indent) (sectionContents s) ++ [renderSectionPlanning indent $ sectionPlannings s]
+  concat (map renderContent (sectionContents s)) ++ [renderSectionPlanning indent $ sectionPlannings s]
 
-renderContent :: Text -> Content -> [Text]
-renderContent indent (OrderedList items) = map (\(Item i) -> "- " <> T.unlines (map (T.unlines . renderContent indent) i)) items
-renderContent indent (UnorderedList items) = zipWith (\n (Item i) -> T.pack (show n) <> T.pack ". " <> T.unlines (map (T.unlines . renderContent indent) i)) [1..] items
-renderContent indent (Paragraph paras) = map ((indent <>) . renderMarkupText) paras
-renderContent indent (Drawer nm cts) = [indent <> ":" <> nm <> ":", cts, indent <> ":" <> nm <> ":"]
-renderContent indent (Block type_ data_ cts) = [indent <> "#+begin_" <> renderBlockType type_ <> maybe "" (<>" ") data_] <> cts <> [indent <> "#+end_" <> renderBlockType type_]
+renderContent :: Content -> [Text]
+renderContent (OrderedList items) = map (\(Item i) -> "- " <> T.unlines (map (T.unlines . renderContent) i)) items
+renderContent (UnorderedList items) = zipWith (\n (Item i) -> T.pack (show n) <> T.pack ". " <> T.unlines (map (T.unlines . renderContent) i)) [1..] items
+renderContent (Paragraph paras) = [mconcat (map renderMarkupText paras)]
+renderContent (Drawer nm cts) = [":" <> nm <> ":", cts, ":" <> nm <> ":"]
+renderContent (Block type_ data_ cts) = ["#+begin_" <> renderBlockType type_ <> maybe "" (" "<>) data_] <> cts <> ["#+end_" <> renderBlockType type_]
 
 renderBlockType :: BlockType -> Text
 renderBlockType Comment = "comment"
